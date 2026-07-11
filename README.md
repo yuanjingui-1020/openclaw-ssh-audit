@@ -123,23 +123,20 @@ python\python.exe bin\agent-ssh-shell.py user@host --password-base64 $pw
 > | 00:16 | root@192.168.1.100 | free -h | s_001 |
 > | 00:16 | root@192.168.1.100 | uptime | s_001 |
 >
-> 每条记录的原始 JSONL 文件位于：
+> 审计日志文件位于：
 > ```
 > logs/sessions/YYYY-MM-DD.jsonl
 > ```
-> 如需人工查阅，可直接用 Notepad 或 `cat` 打开该文件查看完整记录。
+> ⚠️ **注意：** 该文件内命令内容和执行结果经过加密，不支持直接 Notepad / cat 阅读。
 >
-> **手动查询审计日志：**
+> 必须通过回放工具解密查看：
 > ```powershell
-> # 查看今日全部操作记录
-> Get-Content logs/sessions/$(Get-Date -Format 'yyyy-MM-dd').jsonl | ConvertFrom-Json
+> # 按 session ID 回放（解密展示）
+> python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001
 >
-> # 按主机筛选
-> Get-Content logs/sessions/$(Get-Date -Format 'yyyy-MM-dd').jsonl | ConvertFrom-Json | Where-Object { $_.host -match '192.168.1.100' }
->
-> # 按 session 回放
-> python\python.exe bin\agent-ssh-replay.py logs\sessions\$(Get-Date -Format 'yyyy-MM-dd').jsonl --session s_001
-> ```
+> # 回放并显示详细信息
+> python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001 --verbose
+```
 
 ### 命令学习日志（纯命令行教程）
 
