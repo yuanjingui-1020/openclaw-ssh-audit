@@ -110,6 +110,100 @@ python\python.exe bin\agent-ssh-shell.py user@host --password-base64 $pw
 >
 > 安全起见，该命令**已记录但未执行**。如果你确实有清理需求，请明确说明具体路径和目的。
 
+### 审计回放与日志查询
+
+> **你：** 把今天所有的操作记录回放给我看
+>
+> **AI：** 好的，正在读取今日审计日志…
+>
+> 你今天的操作摘要：
+> | 时间 | 目标主机 | 命令 | session_id |
+> |------|----------|------|------------|
+> | 00:15 | root@192.168.1.100 | df -h | s_001 |
+> | 00:16 | root@192.168.1.100 | free -h | s_001 |
+> | 00:16 | root@192.168.1.100 | uptime | s_001 |
+>
+> 每条记录的原始 JSONL 文件位于：
+> ```
+> logs/sessions/YYYY-MM-DD.jsonl
+> ```
+> 如需人工查阅，可直接用 Notepad 或 `cat` 打开该文件查看完整记录。
+>
+> **手动查询审计日志：**
+> ```powershell
+> # 查看今日全部操作记录
+> Get-Content logs/sessions/$(Get-Date -Format 'yyyy-MM-dd').jsonl | ConvertFrom-Json
+>
+> # 按主机筛选
+> Get-Content logs/sessions/$(Get-Date -Format 'yyyy-MM-dd').jsonl | ConvertFrom-Json | Where-Object { $_.host -match '192.168.1.100' }
+>
+> # 按 session 回放
+> python\python.exe bin\agent-ssh-replay.py logs\sessions\$(Get-Date -Format 'yyyy-MM-dd').jsonl --session s_001
+> ```
+
+### 命令学习日志（纯命令行教程）
+
+每次操作后，AI 会自动将执行的命令按天归档到独立的 Markdown 学习日志中，便于复盘回顾。
+
+> **日志路径：** `logs/cmds_learn/YYYY-MM-DD.md`
+
+**手动查看命令学习日志：**
+
+```powershell
+# 直接查看今日的学习日志
+notepad logs/cmds_learn/$(Get-Date -Format 'yyyy-MM-dd').md
+
+# 在 PowerShell 中预览
+Get-Content logs/cmds_learn/$(Get-Date -Format 'yyyy-MM-dd').md -Head 30
+
+# 查看历史某天的记录
+Get-Content logs/cmds_learn/2026-07-11.md
+```
+
+**学习日志内容示例：**
+
+```markdown
+# 命令学习日志 — 2026-07-11
+
+## 22:35 | root@192.168.1.100 | session: s_001
+
+```bash
+▶ df -h
+▶ free -h
+▶ uptime
+▶ ip addr
+```
+
+## 22:40 | testuser@192.168.1.100 | session: s_002
+
+```bash
+▶ systemctl status nginx
+▶ journalctl -u nginx --no-pager -n 50
+```
+```
+
+**纯命令行动作流程（无需 AI，直接终端操作）：**
+
+```powershell
+# 1. 加密存密码（首次）
+python\python.exe bin\agent-ssh-cred.py store 192.168.1.100
+
+# 2. 执行单条命令
+python\python.exe bin\agent-ssh-run.py root@192.168.1.100 "df -h" --password-base64 (Get-Content credentials.txt)
+
+# 3. 批量执行
+python\python.exe bin\agent-ssh-run.py root@192.168.1.100 --batch commands.txt --password-base64 (Get-Content credentials.txt)
+
+# 4. 交互式 Shell
+python\python.exe bin\agent-ssh-shell.py root@192.168.1.100 --password-base64 (Get-Content credentials.txt)
+
+# 5. 回放历史 session
+python\python.exe bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl --session s_001
+
+# 6. 查看今日学习日志
+Get-Content logs/cmds_learn/$(Get-Date -Format 'yyyy-MM-dd').md
+```
+
 ---
 
 ## 功能特性
