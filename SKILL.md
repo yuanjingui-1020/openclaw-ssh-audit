@@ -23,7 +23,10 @@ description: SSH 审计技能。所有 SSH 远程操作通过 SSHAuditClient 执
 
 ## 凭据规则
 
-1. 密码**必须**通过 `agent-ssh-cred.py` 调用 Windows DPAPI 加密存储，绑定当前 Windows 用户会话。
+1. 首次使用收到用户名和密码后，**必须询问用户**是否需要将密码加密保存：
+   - **询问话术：**「是否需要我帮你将密码加密保存到本地？这样后续使用就无需再次输入密码。如果不需要保存，我会在本次会话中直接使用。」
+   - 用户选择**不保存**：本次会话直接使用一次性密码，不写磁盘。
+   - 用户选择**保存**：调用 `agent-ssh-cred.py` 通过 Windows DPAPI 加密存储，绑定当前 Windows 用户会话。
 2. 禁止在脚本/回复/日志中展示明文密码。Base64 编码可用于传参，不得作为持久化存储。
 3. 凭据文件路径：`<AGENT_SSH_AUDIT_HOME>/credentials.txt`（已 DPAPI 加密）。
 
