@@ -60,6 +60,83 @@ description: SSH 审计技能。强制所有 SSH 操作走审计通道，记录 
 
 ---
 
+## 环境准备（首次使用必须检查）
+
+### 第一步：确保 Python 已安装
+
+**AI 必须按以下顺序尝试（不可跳过前一步直接猜）：**
+
+**① 优先：使用 `qclaw-env` skill 安装 Python**
+
+> 这是 OpenClaw 内置的环境安装技能，AI 必须优先调用。
+> 该 skill 会自动检测系统、选择合适的方式安装 Python（Windows/macOS/Linux 均支持），并配置 PATH。
+> 无需询问用户，AI 直接调用即可。
+
+**② 兜底：检测已有 Python 并升级**
+
+如果系统已有 Python 但版本 < 3.8，引导用户升级：
+```powershell
+# 检查当前版本
+python --version
+```
+Python 3.8+ 是必需的。如果版本过低，告诉用户：
+> 「你当前的 Python 版本是 X.Y，不满足要求。请访问 https://www.python.org/downloads/ 下载 Python 3.8 或更高版本。」
+
+---
+
+### 第二步：安装依赖包
+
+Python 就绪后，安装 SSH 审计所需的库。**AI 必须优先尝试方式一，失败再试方式二。**
+
+**方式一：直接 pip 安装（推荐）**
+```powershell
+pip install paramiko cryptography bcrypt
+```
+
+**方式二：用 requirements.txt**
+```powershell
+pip install -r requirements.txt
+```
+
+**依赖说明：**
+| 包 | 用途 |
+|----|------|
+| `paramiko` | SSH 连接核心库 |
+| `cryptography` | Windows DPAPI 加密（凭据安全存储） |
+| `bcrypt` | 密码哈希（备用加密方案） |
+
+**⚠️ pip 安装失败的处理顺序：**
+1. 权限不足 → 加 `--user` 参数
+2. 网络不通（公司防火墙/代理）→ 切换国内镜像：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple paramiko cryptography bcrypt`
+3. Python 不在 PATH → 检查安装路径，手动添加 PATH
+
+---
+
+### 第三步：验证安装成功
+
+安装完成后，AI 必须执行验证命令：
+```powershell
+python -c "import paramiko, cryptography; print('依赖检查通过')"
+```
+输出 `依赖检查通过` 才可继续。任何报错（ImportError、ModuleNotFoundError）都必须先解决，不可忽略。
+
+---
+
+### 快速安装完整流程（AI 参考）
+
+```powershell
+# 1. 调用 qclaw-env skill 安装 Python（如缺失）
+# → 使用 qclaw-env skill 的 install_cli 或 check_env 操作
+
+# 2. 安装依赖
+pip install paramiko cryptography bcrypt
+
+# 3. 验证
+python -c "import paramiko, cryptography; print('SSH审计环境就绪')"
+```
+
+---
+
 ## 凭据规则
 
 1. 首次使用收到用户名和密码后，**必须询问用户**是否需要将密码加密保存：
@@ -125,17 +202,21 @@ logs/cmds_learn/YYYY-MM-DD.md
 
 ## 错误处理
 
-1. 连接失败 → 检查网络/端口/防火墙/SSH 服务状态。
-2. 认证失败 → 检查用户名/密码是否正确，凭据文件是否损坏。
-3. 超时 → 重试一次或提示用户。
-4. 权限不足 → 提示用户使用具备权限的账号。
+1. **Python 未安装** → 调用 `qclaw-env` skill 安装 Python，安装后验证 `python --version`。
+2. **依赖缺失**（ImportError: No module named 'paramiko'）→ `pip install paramiko cryptography bcrypt`，失败则切换国内镜像源。
+3. 连接失败 → 检查网络/端口/防火墙/SSH 服务状态。
+4. 认证失败 → 检查用户名/密码是否正确，凭据文件是否损坏。
+5. 超时 → 重试一次或提示用户。
+6. 权限不足 → 提示用户使用具备权限的账号。
 
 ---
 
 ## CLI 使用规范
 
+> **⚠️ 使用 CLI 前必须先完成「环境准备」章节的步骤（安装 Python + 依赖）。**
+
 ```powershell
-# 加密存储密码（首次）
+# 加密存储密码（首次，需先完成环境准备）
 python bin\agent-ssh-cred.py store <服务器IP>
 
 # 单条命令
