@@ -1,22 +1,28 @@
-﻿<#
+#Requires -RunAsAdministrator
+<#
 .SYNOPSIS
-    SSH 瀹¤鎶€鑳藉寘瀹夎鑴氭湰
+    SSH 审计技能包安装脚本
 .DESCRIPTION
-    涓€閿畬鎴愶細
-    1. 妫€娴嬭嚜甯﹀祵鍏ュ紡 Python 3.11.8 杩愯鏃讹紙鏃犻渶绯荤粺瀹夎 Python锛?    2. 楠岃瘉 paramiko 渚濊禆锛堝凡棰勮锛岀己澶辨椂鑷姩浠?wheels 绂荤嚎瀹夎鎴栬仈缃戝畨瑁咃級
-    3. 璁剧疆 AGENT_SSH_AUDIT_HOME 鐜鍙橀噺锛堜紭鍏?Machine 绾э紝澶辫触闄嶇骇 User 绾э級
-    4. 鍒涘缓 logs 鐩綍缁撴瀯
-    5. 鍒濆鍖?credentials.txt 妯℃澘
-    6. 楠岃瘉瀹夎瀹屾暣鎬?.NOTES
-    涓嶉渶瑕佺鐞嗗憳鏉冮檺锛圡achine 绾у啓澶辫触浼氳嚜鍔ㄩ檷绾т负 User 绾э級
+    一键完成：
+    1. 检测系统 Python 3（自动安装指引）
+    2. 安装 paramiko 依赖
+    3. 设置 AGENT_SSH_AUDIT_HOME 环境变量（优先 Machine 级，失败自动降级 User 级）
+    4. 创建 logs 目录结构
+    5. 初始化 credentials.txt 模板
+    6. 验证安装完整性
+
+    不需要管理员权限（Machine 级写入失败时自动降级 User 级）。
+.NOTES
+    pip 依赖：paramiko（SSH 客户端）
 #>
 param(
-    [switch]$Uninstall  # 鍗歌浇锛氱Щ闄ょ幆澧冨彉閲?)
+    [switch]$Uninstall  # 卸载：移除环境变量
+)
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2
 
-# === 棰滆壊杈撳嚭 ===
+# === 颜色输出 ===
 function Write-Step($msg) { Write-Host "  [+] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "  [!] $msg" -ForegroundColor Yellow }
 function Write-Err($msg)  { Write-Host "  [X] $msg" -ForegroundColor Red }
@@ -25,38 +31,38 @@ $INSTALL_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  SSH 瀹¤鎶€鑳藉寘 - 瀹夎" -ForegroundColor Cyan
+Write-Host "  SSH 审计技能包 - 安装" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  瀹夎鐩綍: $INSTALL_DIR"
+Write-Host "  安装目录: $INSTALL_DIR"
 Write-Host ""
 
-# ========== 鍗歌浇妯″紡 ==========
+# ========== 卸载模式 ==========
 if ($Uninstall) {
-    Write-Step "鍗歌浇锛氱Щ闄?AGENT_SSH_AUDIT_HOME 鐜鍙橀噺..."
+    Write-Step "卸载：移除 AGENT_SSH_AUDIT_HOME 环境变量..."
 
     $machineKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
     try {
         $currentMachine = [Environment]::GetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", "Machine")
         if ($currentMachine) {
             [Environment]::SetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", $null, "Machine")
-            Write-Step "宸茬Щ闄?Machine 绾?AGENT_SSH_AUDIT_HOME"
+            Write-Step "已移除 Machine 级 AGENT_SSH_AUDIT_HOME"
         }
         Remove-ItemProperty -Path $machineKey -Name "AGENT_SSH_AUDIT_HOME" -ErrorAction SilentlyContinue
     } catch {
-        Write-Warn "绉婚櫎 Machine 绾ф敞鍐岃〃澶辫触: $_"
+        Write-Warn "移除 Machine 级注册表失败: $_"
     }
 
     try {
         $currentUser = [Environment]::GetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", "User")
         if ($currentUser) {
             [Environment]::SetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", $null, "User")
-            Write-Step "宸茬Щ闄?User 绾?AGENT_SSH_AUDIT_HOME"
+            Write-Step "已移除 User 级 AGENT_SSH_AUDIT_HOME"
         }
     } catch {
-        Write-Warn "娓呴櫎 User 绾уけ璐? $_"
+        Write-Warn "移除 User 级环境变量失败: $_"
     }
 
-    # 骞挎挱鐜鍙橀噺鍙樻洿
+    # 广播环境变量变更
     try {
         $HWND_BROADCAST = 0xFFFF
         $WM_SETTINGCHANGE = 0x001A
@@ -69,101 +75,108 @@ if ($Uninstall) {
         $null = [Win32.NativeMethods]::SendMessageTimeout(
             $HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, "Environment",
             0x0002, 5000, [ref] [UIntPtr]::Zero)
-        Write-Step "宸插箍鎾幆澧冨彉閲忓彉鏇撮€氱煡"
+        Write-Step "已广播环境变量变更"
     } catch {
-        Write-Warn "骞挎挱鍙樻洿澶辫触锛堥渶閲嶅惎鐢熸晥锛? $_"
+        Write-Warn "广播变更失败（需重启终端生效）: $_"
     }
 
     Write-Host ""
-    Write-Host "鍗歌浇瀹屾垚銆傚闇€閲嶆柊瀹夎锛岃鍘绘帀 -Uninstall 鍙傛暟銆? -ForegroundColor Cyan
+    Write-Host "卸载完成。如需重新安装，请去掉 -Uninstall 参数重新运行。" -ForegroundColor Cyan
     exit 0
 }
 
-# ========== 瀹夎妯″紡 ==========
+# ========== 安装模式 ==========
 
-# 1. 妫€娴嬭嚜甯︾殑宓屽叆寮?Python
-Write-Step "妫€娴?Python 杩愯鏃?.."
-$PYTHON_EXE = Join-Path $INSTALL_DIR "python\python.exe"
-if (Test-Path $PYTHON_EXE) {
-    $pyVer = & $PYTHON_EXE --version 2>&1
-    Write-Step "鑷甫 Python 鐗堟湰: $pyVer"
-} else {
-    Write-Err "鏈壘鍒拌嚜甯?Python 杩愯鏃讹紙$PYTHON_EXE锛夈€傝纭瀹夎鍖呭畬鏁淬€?
+# 1. 检测系统 Python
+Write-Step "检测系统 Python..."
+$PYTHON_EXE = $null
+
+# 优先找 python3，其次 python
+foreach ($cmd in @("python3", "python")) {
+    try {
+        $out = & $cmd --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $PYTHON_EXE = (Get-Command $cmd -ErrorAction SilentlyContinue).Source
+            Write-Step "找到 Python: $PYTHON_EXE  ($out)"
+            break
+        }
+    } catch { }
+}
+
+if (-not $PYTHON_EXE) {
+    Write-Err "未找到 Python 3，请先安装 Python 3.8+"
+    Write-Host ""
+    Write-Host "  安装方式：" -ForegroundColor Yellow
+    Write-Host "    方式一（推荐）：Microsoft Store → 搜索 'Python 3.11' → 安装" -ForegroundColor White
+    Write-Host "    方式二：https://www.python.org/downloads/ 下载安装包" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  安装后请重新运行本脚本。" -ForegroundColor Cyan
     exit 1
 }
 
-# 2. 楠岃瘉渚濊禆锛堝祵鍏ュ紡 Python 宸查瑁?paramiko锛岃烦杩囧畨瑁咃級
-Write-Step "楠岃瘉 Python 渚濊禆..."
-$wheelsDir = Join-Path $INSTALL_DIR "wheels"
-$verifyResult = & $PYTHON_EXE -c "import paramiko; print('paramiko', paramiko.__version__)" 2>&1
+# 2. 安装 paramiko 依赖
+Write-Step "安装 paramiko 依赖..."
+$pipResult = & $PYTHON_EXE -m pip install paramiko --quiet 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-Step "渚濊禆灏辩华: $verifyResult"
+    $pVersion = & $PYTHON_EXE -c "import paramiko; print(paramiko.__version__)" 2>&1
+    Write-Step "paramiko $pVersion 安装成功"
 } else {
-    Write-Warn "渚濊禆缂哄け锛屽皾璇曞畨瑁?.."
-    $installed = $false
-    if (Test-Path $wheelsDir) {
-        Write-Step "绂荤嚎瀹夎..."
-        & $PYTHON_EXE -m pip install --no-index --find-links="$wheelsDir" paramiko 2>&1
-        if ($LASTEXITCODE -eq 0) { $installed = $true }
-    }
-    if (-not $installed) {
-        Write-Step "鑱旂綉瀹夎..."
-        & $PYTHON_EXE -m pip install paramiko 2>&1
-        if ($LASTEXITCODE -eq 0) { $installed = $true }
-    }
-    if (-not $installed) {
-        Write-Err "paramiko 瀹夎澶辫触锛岃妫€鏌ョ綉缁滄垨 wheels 鐩綍"
-    } else {
-        Write-Step "渚濊禆瀹夎瀹屾垚"
-    }
+    Write-Err "paramiko 安装失败: $pipResult"
+    exit 1
 }
 
-# 3. 鍒涘缓鐩綍缁撴瀯
-Write-Step "鍒涘缓 logs 鐩綍缁撴瀯..."
-$logsDir = Join-Path $INSTALL_DIR "logs"
+# 3. 创建 logs 目录结构
+Write-Step "创建 logs 目录结构..."
+$logsDir     = Join-Path $INSTALL_DIR "logs"
 $sessionsDir = Join-Path $logsDir "sessions"
+$cmdsDir     = Join-Path $logsDir "cmds_learn"
 New-Item -ItemType Directory -Force -Path $sessionsDir | Out-Null
-Write-Step "  logs\"
-Write-Step "    sessions\"
+New-Item -ItemType Directory -Force -Path $cmdsDir | Out-Null
+Write-Step "  logs/"
+Write-Step "    sessions/"
+Write-Step "    cmds_learn/"
 
-# 4. 鍒濆鍖?credentials.txt锛堝鏋滀笉瀛樺湪锛?$credFile = Join-Path $INSTALL_DIR "credentials.txt"
+# 4. 初始化 credentials.txt（如不存在）
+$credFile = Join-Path $INSTALL_DIR "credentials.txt"
 if (-not (Test-Path $credFile)) {
-    Write-Step "鍒涘缓 credentials.txt 妯℃澘..."
+    Write-Step "创建 credentials.txt 模板..."
     @"
-# SSH 鍑嵁鏂囦欢锛坘ey=value 鏍煎紡锛屼竴琛屼竴鏉★紝value 涓?Base64 缂栫爜鐨勫瘑鐮侊級
-# 绀轰緥: 192.168.1.100=YXBwZW4=
-# 鏈枃浠剁敱 AI 鑷姩绠＄悊锛岃鍕挎墜鍔ㄧ紪杈戙€?"@ | Out-File -FilePath $credFile -Encoding UTF8
-    Write-Step "  credentials.txt锛堟ā鏉匡級"
+# SSH 凭据文件（key=value 格式，一行一条，value 为 Base64 编码的密文）
+# 示例: 192.168.1.100=YXBwZW4=
+# 本文件由 AI 自动管理，请勿手动编辑。
+"@ | Out-File -FilePath $credFile -Encoding UTF8
+    Write-Step "  credentials.txt（模板）"
 } else {
-    Write-Step "credentials.txt 宸插瓨鍦紝璺宠繃"
+    Write-Step "credentials.txt 已存在，跳过"
 }
 
-# 5. 璁剧疆鐜鍙橀噺锛堜紭鍏?Machine 绾э紝澶辫触鑷姩闄嶇骇 User 绾э級
-Write-Step "璁剧疆鐜鍙橀噺 AGENT_SSH_AUDIT_HOME=$INSTALL_DIR ..."
+# 5. 设置环境变量（优先 Machine 级，失败自动降级 User 级）
+Write-Step "设置环境变量 AGENT_SSH_AUDIT_HOME=$INSTALL_DIR ..."
 $envSetOK = $false
 
-# 灏濊瘯 Machine 绾э紙闇€瑕佺鐞嗗憳鏉冮檺锛?try {
+try {
     [Environment]::SetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", $INSTALL_DIR, "Machine")
-    Write-Step "宸插啓鍏?Machine 绾х幆澧冨彉閲?
+    Write-Step "已写入 Machine 级环境变量"
     $envSetOK = $true
 } catch {
-    Write-Warn "Machine 绾у啓鍏ュけ璐ワ紙闇€瑕佺鐞嗗憳鏉冮檺锛夛紝闄嶇骇鍒?User 绾?.."
+    Write-Warn "Machine 级写入失败（需要管理员权限），降级到 User 级..."
 }
 
-# 闄嶇骇锛歎ser 绾э紙涓嶉渶瑕佺鐞嗗憳鏉冮檺锛?if (-not $envSetOK) {
+if (-not $envSetOK) {
     try {
         [Environment]::SetEnvironmentVariable("AGENT_SSH_AUDIT_HOME", $INSTALL_DIR, "User")
-        Write-Step "宸插啓鍏?User 绾х幆澧冨彉閲?
+        Write-Step "已写入 User 级环境变量"
         $envSetOK = $true
     } catch {
-        Write-Err "User 绾у啓鍏ヤ篃澶辫触: $_"
+        Write-Err "User 级写入也失败: $_"
     }
 }
 
-# 鏃犺鎸佷箙鍖栨槸鍚︽垚鍔燂紝閮芥敞鍏ュ綋鍓嶈繘绋?$env:AGENT_SSH_AUDIT_HOME = $INSTALL_DIR
-Write-Step "宸叉敞鍏ュ綋鍓嶈繘绋?
+# 无论如何写入当前进程
+$env:AGENT_SSH_AUDIT_HOME = $INSTALL_DIR
+Write-Step "已写入当前进程环境变量"
 
-# 6. 骞挎挱鐜鍙橀噺鍙樻洿
+# 6. 广播环境变量变更
 try {
     $HWND_BROADCAST = 0xFFFF
     $WM_SETTINGCHANGE = 0x001A
@@ -176,27 +189,25 @@ try {
     $null = [Win32.NativeMethods]::SendMessageTimeout(
         $HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, "Environment",
         0x0002, 5000, [ref] [UIntPtr]::Zero)
-    Write-Step "宸插箍鎾幆澧冨彉閲忓彉鏇撮€氱煡"
+    Write-Step "已广播环境变量变更"
 } catch {
-    Write-Warn "骞挎挱鍙樻洿澶辫触锛堥噸鍚悗鑷姩鐢熸晥锛? $_"
+    Write-Warn "广播变更失败（需重启终端后生效）: $_"
 }
 
-# 7. 楠岃瘉瀹夎
-Write-Step "楠岃瘉瀹夎瀹屾暣鎬?.."
+# 7. 验证安装
+Write-Step "验证安装完整性..."
 $checks = @(
-    @{Label="SKILL.md";      Path=Join-Path $INSTALL_DIR "SKILL.md"},
-    @{Label="requirements.txt"; Path=Join-Path $INSTALL_DIR "requirements.txt"},
-    @{Label="agent_ssh_audit\__init__.py"; Path=Join-Path $INSTALL_DIR "agent_ssh_audit\__init__.py"},
-    @{Label="agent_ssh_audit\client.py";   Path=Join-Path $INSTALL_DIR "agent_ssh_audit\client.py"},
-    @{Label="agent_ssh_audit\rules.py";    Path=Join-Path $INSTALL_DIR "agent_ssh_audit\rules.py"},
-    @{Label="agent_ssh_audit\storage.py";  Path=Join-Path $INSTALL_DIR "agent_ssh_audit\storage.py"},
-    @{Label="agent_ssh_audit\replay.py";   Path=Join-Path $INSTALL_DIR "agent_ssh_audit\replay.py"},
-    @{Label="agent_ssh_audit\recorder.py"; Path=Join-Path $INSTALL_DIR "agent_ssh_audit\recorder.py"},
-    @{Label="bin\agent-ssh-run.py";   Path=Join-Path $INSTALL_DIR "bin\agent-ssh-run.py"},
-    @{Label="bin\agent-ssh-shell.py"; Path=Join-Path $INSTALL_DIR "bin\agent-ssh-shell.py"},
-    @{Label="bin\agent-ssh-replay.py";Path=Join-Path $INSTALL_DIR "bin\agent-ssh-replay.py"},
-    @{Label="demo.py";     Path=Join-Path $INSTALL_DIR "demo.py"},
-    @{Label="test_shell.py"; Path=Join-Path $INSTALL_DIR "test_shell.py"}
+    @{Label="SKILL.md";                     Path=Join-Path $INSTALL_DIR "SKILL.md"},
+    @{Label="requirements.txt";             Path=Join-Path $INSTALL_DIR "requirements.txt"},
+    @{Label=".gitignore";                   Path=Join-Path $INSTALL_DIR ".gitignore"},
+    @{Label="agent_ssh_audit/__init__.py";  Path=Join-Path $INSTALL_DIR "agent_ssh_audit\__init__.py"},
+    @{Label="agent_ssh_audit/client.py";    Path=Join-Path $INSTALL_DIR "agent_ssh_audit\client.py"},
+    @{Label="agent_ssh_audit/rules.py";     Path=Join-Path $INSTALL_DIR "agent_ssh_audit\rules.py"},
+    @{Label="agent_ssh_audit/crypto.py";     Path=Join-Path $INSTALL_DIR "agent_ssh_audit\crypto.py"},
+    @{Label="bin/agent-ssh-run.py";         Path=Join-Path $INSTALL_DIR "bin\agent-ssh-run.py"},
+    @{Label="bin/agent-ssh-shell.py";       Path=Join-Path $INSTALL_DIR "bin\agent-ssh-shell.py"},
+    @{Label="bin/agent-ssh-replay.py";      Path=Join-Path $INSTALL_DIR "bin\agent-ssh-replay.py"},
+    @{Label="bin/agent-ssh-cred.py";        Path=Join-Path $INSTALL_DIR "bin\agent-ssh-cred.py"}
 )
 
 $allOK = $true
@@ -204,7 +215,7 @@ foreach ($c in $checks) {
     if (Test-Path $c.Path) {
         Write-Step $c.Label
     } else {
-        Write-Err "缂哄皯: $($c.Label)"
+        Write-Err "缺失: $($c.Label)"
         $allOK = $false
     }
 }
@@ -212,19 +223,18 @@ foreach ($c in $checks) {
 Write-Host ""
 if ($allOK) {
     Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "  瀹夎瀹屾垚锛? -ForegroundColor Green
+    Write-Host "  安装完成！" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  鐜鍙橀噺: AGENT_SSH_AUDIT_HOME=$INSTALL_DIR"
-    Write-Host "  鏃ュ織鐩綍: $logsDir"
-    Write-Host "  鍑嵁鏂囦欢: $credFile"
+    Write-Host "  环境变量: AGENT_SSH_AUDIT_HOME=$INSTALL_DIR"
+    Write-Host "  日志目录: $logsDir"
+    Write-Host "  凭据文件: $credFile"
     Write-Host ""
-    Write-Host "  蹇€熼獙璇?"
-    Write-Host "    cd `$env:AGENT_SSH_AUDIT_HOME"
-    Write-Host "    python demo.py"
+    Write-Host "  快速验证（请打开新终端）:"
+    Write-Host "    python bin/agent-ssh-cred.py list"
     Write-Host ""
-    Write-Host "  鍗歌浇: .\install.ps1 -Uninstall"
+    Write-Host "  卸载: .\install.ps1 -Uninstall"
 } else {
-    Write-Err "瀹夎涓嶅畬鏁达紝璇锋鏌ョ己澶辨枃浠跺悗閲嶆柊杩愯銆?
+    Write-Err "安装不完整，请检查缺失文件后重新运行。"
     exit 1
 }

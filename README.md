@@ -30,8 +30,8 @@ https://github.com/yuanjingui-1020/openclaw-ssh-audit.git
 ```
 
 安装脚本会自动：
-- 检测自带嵌入式 Python 3.11 运行时（无需系统安装 Python）
-- 验证 paramiko 依赖
+- 检测系统 Python 3（需用户自行安装）
+- 安装 paramiko 依赖
 - 设置环境变量 `AGENT_SSH_AUDIT_HOME`
 - 创建日志目录结构
 
@@ -39,20 +39,20 @@ https://github.com/yuanjingui-1020/openclaw-ssh-audit.git
 
 ```powershell
 # 加密存储 SSH 密码（Windows DPAPI 加密，绑定当前用户）
-python\python.exe bin\agent-ssh-cred.py store <服务器IP>
+python bin\agent-ssh-cred.py store <服务器IP>
 ```
 
 ### 3. 运行
 
 ```powershell
 # 单条命令
-python\python.exe bin\agent-ssh-run.py user@host "df -h" --password-base64 $pw
+python bin\agent-ssh-run.py user@host "df -h" --password-base64 $pw
 
 # 批量命令
-python\python.exe bin\agent-ssh-run.py user@host --batch commands.txt --password-base64 $pw
+python bin\agent-ssh-run.py user@host --batch commands.txt --password-base64 $pw
 
 # 交互式 Shell
-python\python.exe bin\agent-ssh-shell.py user@host --password-base64 $pw
+python bin\agent-ssh-shell.py user@host --password-base64 $pw
 ```
 
 ---
@@ -146,11 +146,11 @@ python\python.exe bin\agent-ssh-shell.py user@host --password-base64 $pw
 > 必须通过回放工具解密查看：
 > ```powershell
 > # 按 session ID 回放（解密展示）
-> python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001
+> python bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001
 >
 > # 回放并显示详细信息
-> python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001 --verbose
-```
+> python bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session s_001 --verbose
+> ```
 
 ### 命令学习日志（纯命令行教程）
 
@@ -197,19 +197,19 @@ Get-Content logs/cmds_learn/2026-07-11.md
 
 ```powershell
 # 1. 加密存密码（首次）
-python\python.exe bin\agent-ssh-cred.py store 192.168.1.100
+python bin\agent-ssh-cred.py store 192.168.1.100
 
 # 2. 执行单条命令
-python\python.exe bin\agent-ssh-run.py root@192.168.1.100 "df -h" --password-base64 (Get-Content credentials.txt)
+python bin\agent-ssh-run.py root@192.168.1.100 "df -h" --password-base64 (Get-Content credentials.txt)
 
 # 3. 批量执行
-python\python.exe bin\agent-ssh-run.py root@192.168.1.100 --batch commands.txt --password-base64 (Get-Content credentials.txt)
+python bin\agent-ssh-run.py root@192.168.1.100 --batch commands.txt --password-base64 (Get-Content credentials.txt)
 
 # 4. 交互式 Shell
-python\python.exe bin\agent-ssh-shell.py root@192.168.1.100 --password-base64 (Get-Content credentials.txt)
+python bin\agent-ssh-shell.py root@192.168.1.100 --password-base64 (Get-Content credentials.txt)
 
 # 5. 回放历史 session
-python\python.exe bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl --session s_001
+python bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl --session s_001
 
 # 6. 查看今日学习日志
 Get-Content logs/cmds_learn/$(Get-Date -Format 'yyyy-MM-dd').md
@@ -227,21 +227,6 @@ Get-Content logs/cmds_learn/$(Get-Date -Format 'yyyy-MM-dd').md
 | 🔍 **会话回放** | 可逐条回放历史命令执行过程 |
 | 📚 **命令学习日志** | 独立 Markdown 日志，按天归档所有执行过的命令 |
 | 🎤 **命令展示与解释** | AI 执行后逐条展示命令并解释作用 |
-| 🐍 **嵌入式 Python** | 自带 Python 3.11 运行环境，无需系统安装 |
-
----
-
-## 执行流程
-
-![执行流程图](执行流程图.png)
-
-整体工作流说明：
-
-1. **凭据管理** — 通过 `agent-ssh-cred.py` 用 Windows DPAPI 加密存储密码
-2. **命令执行** — `agent-ssh-run.py` 或 `agent-ssh-shell.py` 发起 SSH 连接
-3. **审计检查** — 每条命令经过 14 条安全规则检测，命中即告警并记录
-4. **日志归档** — JSONL 格式审计日志 + Markdown 命令学习日志双通道
-5. **会话回放** — 通过 `agent-ssh-replay.py` 随时查看历史操作
 
 ---
 
@@ -262,7 +247,7 @@ ssh-audit/
 │   ├── crypto.py               # DPAPI 加解密
 │   ├── rules.py                # 危险命令检测规则
 │   ├── storage.py              # 日志存储
-│   ├── recorder.py             # 事件记录器
+│   ├── recorder.py              # 事件记录器
 │   ├── replay.py               # 会话回放
 │   └── cmd_learner.py          # 命令学习日志
 │
@@ -270,13 +255,11 @@ ssh-audit/
 │   ├── agent-ssh-run.py        # 执行 SSH 命令
 │   ├── agent-ssh-shell.py      # 交互式 Shell
 │   ├── agent-ssh-replay.py     # 会话回放
-│   └── agent-ssh-cred.py       # 凭据管理
+│   └── agent-ssh-cred.py        # 凭据管理
 │
 ├── demo.py                     # 端到端演示
 ├── test_shell.py               # Shell 流程测试
 │
-├── python/                     # 嵌入式 Python 3.11 运行时
-├── wheels/                     # Python 轮子文件（离线安装用）
 └── logs/                       # 日志目录（自动生成）
     ├── sessions/               # 审计 session 日志
     └── cmds_learn/             # 命令学习日志（Markdown）

@@ -1,6 +1,6 @@
 ---
 name: ssh-audit
-description: SSH 审计技能。所有 SSH 远程操作通过 SSHAuditClient 执行，自动记录 JSONL 审计日志，内置 14 条高危命令检测规则，支持命令执行、交互式 Shell、会话回放。凭证通过 Windows DPAPI 加密存储，日志采用相对路径存储便于项目迁移。
+description: SSH 审计技能。强制所有 SSH 操作走审计通道，记录 JSONL 日志，内置 14 条高危命令检测规则，支持命令执行、交互式 Shell、会话回放。凭据通过 Windows DPAPI 加密存储。强制输出规范，不可省略任何环节。
 ---
 
 # SSH 审计技能
@@ -8,6 +8,45 @@ description: SSH 审计技能。所有 SSH 远程操作通过 SSHAuditClient 执
 ## 目的
 
 本技能强制所有 SSH 远程操作走审计通道。AI 执行任何 SSH 命令时，**必须**使用本项目的 CLI 工具或 Python 库，禁止裸 paramiko / subprocess ssh / 其他 SSH 库。所有操作自动记录 JSONL 审计日志、触发规则检测、支持事后回放。
+
+> **强制输出规范（所有 SSH 命令执行后必须完整输出，不可跳过任何一步）：**
+> 
+> ### 第一步：输出 session 元信息（固定格式）
+> ```
+> [SSH] session:     <session_id>
+> [SSH] target:     <user>@<host>:22
+> [SSH] log:        <log_file_path>
+> ```
+> 
+> ### 第二步：输出命令原文（固定格式）
+> ```
+> ▶ 执行命令: <命令原文>
+> ```
+> 
+> ### 第三步：输出命令解释（固定格式）
+> ```
+> 【作用】<一句话说明这条命令在做什么>
+> ```
+> 
+> ### 第四步：输出命令输出（原始/raw 输出，完整呈现）
+> ```
+> ───────────────────────────────
+> <命令输出正文，原样呈现>
+> ───────────────────────────────
+> ```
+> 
+> ### 第五步：输出执行摘要（固定格式）
+> ```
+> 【摘要】成功 / 失败（退出码 N） / 异常：<简短说明>
+> ```
+>
+> **⚠️ 禁止行为（违反以下任意一条视为严重违规）：**
+> - 跳过 session 元信息输出
+> - 跳过命令原文输出（不得只说"查到了"而不展示命令）
+> - 跳过命令解释
+> - 用自己的话转述命令输出（不得"翻译"或"总结"原始输出，必须原样呈现）
+> - 省略命令学习日志写入
+> - 在回复中暴露明文密码
 
 ---
 
@@ -97,19 +136,19 @@ logs/cmds_learn/YYYY-MM-DD.md
 
 ```powershell
 # 加密存储密码（首次）
-python\python.exe bin\agent-ssh-cred.py store <服务器IP>
+python bin\agent-ssh-cred.py store <服务器IP>
 
 # 单条命令
-python\python.exe bin\agent-ssh-run.py user@host "命令" --show-commands
+python bin\agent-ssh-run.py user@host "命令" --show-commands
 
 # 批量命令
-python\python.exe bin\agent-ssh-run.py user@host --batch commands.txt
+python bin\agent-ssh-run.py user@host --batch commands.txt
 
 # 交互式 Shell
-python\python.exe bin\agent-ssh-shell.py user@host
+python bin\agent-ssh-shell.py user@host
 
 # 会话回放（解密查看审计日志）
-python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session <session_id>
+python bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --session <session_id>
 ```
 
 ---
@@ -120,35 +159,70 @@ python\python.exe bin\agent-ssh-replay.py logs\sessions\YYYY-MM-DD.jsonl --sessi
 
 ```powershell
 # 查看某日所有 session
-python\python.exe bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl
+python bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl
 
 # 指定 session 回放
-python\python.exe bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl --session s_001
+python bin\agent-ssh-replay.py logs\sessions\2026-07-11.jsonl --session s_001
 ```
 
 ---
 
-## 命令展示与解释
+## 命令执行后强制输出规范（必须依次输出，缺一不可）
 
-每次执行 SSH 命令后，**必须**将以下信息展示给用户：
+每次 SSH 命令执行完毕，AI **必须**按以下顺序、分段输出，**不得遗漏任何一步**，**不得合并段落**，**不得用自然语言替代**：
 
-1. 执行的命令原文（格式：`▶ 执行命令: <command>`）
-2. 命令的作用说明
-3. 执行结果摘要（异常情况重点提示）
+### ① Session 元信息（固定格式）
+```
+[SSH] session:     <session_id>
+[SSH] target:     <user>@<host>:22
+[SSH] log:        <log_file_path>
+```
 
-禁止只给结果不给命令。
+### ② 命令原文（固定格式）
+```
+▶ 执行命令: <命令原文>
+```
+
+### ③ 命令解释（固定格式）
+```
+【作用】<一句话说明这条命令在做什么>
+```
+
+### ④ 原始输出（raw 原文，原样呈现）
+```
+───────────────────────────────
+<原始命令输出，原封不动>
+───────────────────────────────
+```
+
+### ⑤ 执行摘要（固定格式）
+```
+【摘要】成功 / 失败（退出码 N）/ 异常：<一句话说明>
+```
+
+> **违规判定：** 缺少任意一节、用自然语言概括原始输出（"我帮你查了一下，这台机器上有..."）、或省略日志写入，均视为违反本 skill，触发规则告警。
 
 ---
 
-## 命令学习日志
+## 命令学习日志（强制写入，不可省略）
 
-每次操作后自动将命令归档到 `<AGENT_SSH_AUDIT_HOME>/logs/cmds_learn/YYYY-MM-DD.md`，每条记录包含：
+每次 SSH 命令执行完毕后，**立即**将记录追加到 `<AGENT_SSH_AUDIT_HOME>/logs/cmds_learn/YYYY-MM-DD.md`，格式如下：
 
-- **时间**（HH:MM）
-- **用户@主机**
-- **session_id**
-- **命令原文**
+```markdown
+## HH:MM
 
-日志为 Markdown 格式，可直接用 Notepad 打开查看。
+**用户 @ 主机：** <user> @ <host>
+
+**session_id：** <session_id>
+
+**执行命令：**
+```
+<命令原文>
+```
+
+**用途：**<一句话说明>
 
 ---
+```
+
+日志为 Markdown 格式，append-only（只追加，不覆盖历史），可直接用 Notepad 打开查看。
